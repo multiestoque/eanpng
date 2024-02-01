@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Código de Barras EAN-13</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/g/filesaver.js"></script>
+</head>
+<body>
+    <label for="quantity">Quantidade:</label>
+    <input type="number" id="quantity" value="1" min="1">
+    <button onclick="generateAndDownload()">Gerar Códigos e Texto</button>
+    <button onclick="generateTextOnly()">Gerar Apenas Texto</button>
+    <button onclick="cancelGeneration()">Cancelar</button>
+
+    <!-- Barra de progresso -->
+    <div id="progressContainer" style="display: none;">
+        <progress id="progressBar" value="0" max="100"></progress>
+        <span id="progressText">0%</span>
+    </div>
+
+    <script>
+        let generationCancelled = false;
+
+        function updateProgressBar(progress) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            progressBar.value = progress;
+            progressText.innerText = `${progress.toFixed(2)}%`;
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function generateAndDownload() {
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const zip = new JSZip();
+            const generatedEANs = new Set();
+            const progressBar = document.getElementById('progressBar');
+            const progressContainer = document.getElementById('progressContainer');
+            progressContainer.style.display = 'block';
+            progressBar.value = 0;
+
+            generationCancelled = false;
+
+            async function processNextCode(i) {
+                if (i < quantity && !generationCancelled) {
+                    let ean13CodeWithoutCheckDigit;
+                    do {
+                        const random9Digits = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+                        ean13CodeWithoutCheckDigit = '789' + random9Digits;
+                    } while (generatedEANs.has(ean13CodeWithoutCheckDigit));
+                    generatedEANs.add(ean13CodeWithoutCheckDigit);
+
+                    const checkDigit = calculateCheckDigit(ean13CodeWithoutCheckDigit);
+                    const ean13Code = ean13CodeWithoutCheckDigit + checkDigit.toString();
+
+                    const canvas = document.createElement('canvas');
+                    JsBarcode(canvas, ean13Code, {
+                        format: 'EAN13',
+                        displayValue: true
+                    });
+
+                    const blob = await new Promise(resolve => canvas.toBlob(resolve));
+                    zip.file(`${ean13Code}.png`, blob);
+
+                    const progress = ((i + 1) / quantity) * 100;
+                    updateProgressBar(progress);
+
+                    if (i === quantity - 1) {
+                        const eanListText = Array.from(generatedEANs).map(ean => ean + calculateCheckDigit(ean).toString()).join('\n');
+                        zip.file('Listagem com todos os EAN-13.txt', eanListText);
+                        const content = await zip.generateAsync({ type: 'blob' });
+                        saveAs(content, 'Código EAN-13.zip');
+                        updateProgressBar(0);
+                        progressContainer.style.display = 'none';
+                    } else {
+                        await sleep(10);
+                        await processNextCode(i + 1);
+                    }
+                }
+            }
+
+            await processNextCode(0);
+        }
+
+        async function generateTextOnly() {
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const generatedEANs = new Set();
+            const zip = new JSZip();
+            const progressBar = document.getElementById('progressBar');
+            const progressContainer = document.getElementById('progressContainer');
+            progressContainer.style.display = 'block';
+            progressBar.value = 0;
+            generationCancelled = false;
+
+            async function processNextCode(i) {
+                if (i < quantity && !generationCancelled) {
+                    let ean13CodeWithoutCheckDigit;
+                    do {
+                        const random9Digits = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+                        ean13CodeWithoutCheckDigit = '789' + random9Digits;
+                    } while (generatedEANs.has(ean13CodeWithoutCheckDigit));
+                    generatedEANs.add(ean13CodeWithoutCheckDigit);
+
+                    const checkDigit = calculateCheckDigit(ean13CodeWithoutCheckDigit);
+                    const ean13Code = ean13CodeWithoutCheckDigit + checkDigit.toString();
+
+                    const progress = ((i + 1) / quantity) * 100;
+                    updateProgressBar(progress);
+
+                    if (i === quantity - 1) {
+                        const eanListText = Array.from(generatedEANs).map(ean => ean + calculateCheckDigit(ean).toString()).join('\n');
+                        zip.file('Listagem com todos os EAN-13.txt', eanListText);
+                        const content = await zip.generateAsync({ type: 'blob' });
+                        saveAs(content, 'Código EAN-13.txt');
+                        updateProgressBar(0);
+                        progressContainer.style.display = 'none';
+                    } else {
+                        await sleep(10);
+                        await processNextCode(i + 1);
+                    }
+                }
+            }
+
+            await processNextCode(0);
+        }
+
+        function cancelGeneration() {
+            generationCancelled = true;
+            const progressContainer = document.getElementById('progressContainer');
+            progressContainer.style.display = 'none';
+        }
+
+        function calculateCheckDigit(ean) {
+            const eanArray = ean.split('').map(num => parseInt(num));
+            let sum = 0;
+            eanArray.forEach((num, index) => {
+                sum += num * (index % 2 === 0 ? 1 : 3);
+            });
+            const remainder = sum % 10;
+            const checkDigit = remainder === 0 ? 0 : 10 - remainder;
+            return checkDigit;
+        }
+    </script>
+</body>
+</html>
